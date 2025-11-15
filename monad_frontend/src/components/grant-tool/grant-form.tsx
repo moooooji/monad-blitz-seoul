@@ -25,11 +25,18 @@ interface GrantFormProps {
 const GrantForm = ({ className = "" }: GrantFormProps) => {
   const [amountQuery, setAmountQuery] = useQueryNumber("amount", 10000);
   const [usdInput, setUsdInput] = useState<string>(String(amountQuery));
-  const [splits, setSplits] = useState<Record<AssetSymbol, number>>({ ETH: 40, USDC: 35, LINK: 25 });
+  const [splits, setSplits] = useState<Record<AssetSymbol, number>>({
+    BTC: 25,
+    ETH: 25,
+    USDC: 20,
+    LINK: 15,
+    USDT: 15,
+  });
   const [recipients, setRecipients] = useState<GrantRecipient[]>([]);
   const [draft, setDraft] = useState<RecipientDraft>(() => ({ address: "", chainSelector: chainCatalog[0].selector, assetSymbol: assetCatalog[0].symbol, usdShare: "" }));
   const [formError, setFormError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [sendState, setSendState] = useState<DispatchState>({ status: "idle" });
   const { priceMap, isLoading, error, refresh } = usePriceFeeds(assetSymbols);
   const usdValue = useMemo(() => (Number.isFinite(Number(usdInput)) ? Number(usdInput) : 0), [usdInput]);
   const allocations = useMemo(() => computeAllocations(usdValue, splits, priceMap), [usdValue, splits, priceMap]);
@@ -98,6 +105,47 @@ const GrantForm = ({ className = "" }: GrantFormProps) => {
     setLogs((current) => [`${new Date().toLocaleTimeString()} · Prepared ${recipients.length} transfers`, summary, ...current].slice(0, 6));
   }, [recipients, transfers]);
 
+  const handleDispatch = useCallback(async () => {
+    if (recipients.length === 0) {
+      setFormError("Add at least one CCIP recipient");
+      return;
+    }
+    const payloadRecipients = recipients.map((recipient) => {
+      const transfer = transfers.find((entry) => entry.id === recipient.id);
+      const receiverAddress = chainMap[recipient.chainSelector].receiver;
+      return {
+        receiver: receiverAddress,
+        beneficiary: recipient.address,
+        chainSelector: recipient.chainSelector,
+        assetSymbol: recipient.assetSymbol,
+        usdShare: recipient.usdShare,
+        assetAmount: transfer?.assetAmount ?? 0,
+      };
+    });
+    const totalUsdCommitted = recipients.reduce((accumulator, recipient) => accumulator + recipient.usdShare, 0);
+    setSendState({ status: "pending" });
+    try {
+      const response = await fetch("/api/ccip/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sourceChain: "Monad",
+          totalUsd: totalUsdCommitted,
+          recipients: payloadRecipients,
+          chainSummary: chainsSummary,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Dispatch failed (${response.status})`);
+      }
+      const data = await response.json();
+      setSendState({ status: "success", messageId: data.messageId, lane: data.lane, eta: data.eta });
+      setLogs((current) => [`${new Date().toLocaleTimeString()} · CCIP dispatch ${data.messageId}`, ...current].slice(0, 6));
+    } catch (error) {
+      setSendState({ status: "error", error: error instanceof Error ? error.message : "Unknown error" });
+    }
+  }, [chainsSummary, recipients, transfers]);
+
   return (
     <section className={`w-full space-y-6 ${className}`}>
       <header className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur">
@@ -121,8 +169,8 @@ const GrantForm = ({ className = "" }: GrantFormProps) => {
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3">
             <div>
-              <p className="text-lg font-semibold text-white">CCIP recipients</p>
-              <p className="text-sm text-slate-400">Fan out Chainlink transfers across battle-tested CCIP lanes.</p>
+              <p className="text-lg font-semibold text-white">Recipients</p>
+              <p className="text-sm text-slate-400">입력된 주소는 체인별 CCIP receiver가 토큰을 전달할 최종 지갑입니다.</p>
             </div>
             <div className="ml-auto text-xs text-slate-400">Feeds: {error ? <span className="text-rose-400">{error}</span> : <span className="text-emerald-300">{isLoading ? "Syncing" : "Live"}</span>}</div>
             <button type="button" className="rounded-full border border-white/10 px-3 py-1 text-xs font-medium uppercase tracking-wide text-slate-200 transition hover:border-cyan-400" onClick={refresh}>Refresh feeds</button>
@@ -191,7 +239,13 @@ const GrantForm = ({ className = "" }: GrantFormProps) => {
               <li>✔️ CCIP routers resolved for all chains</li>
               <li>✔️ Payload ready for executor</li>
             </ul>
-            <button type="button" className="rounded-xl bg-emerald-400/90 px-4 py-3 text-base font-semibold text-emerald-950 transition hover:bg-emerald-300 disabled:opacity-40" disabled={recipients.length === 0} onClick={handleSimulate}>Simulate CCIP dispersal</button>
+            <button type="button" className="rounded-xl bg-cyan-400/90 px-4 py-3 text-base font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-40" disabled={recipients.length === 0 || sendState.status === "pending"} onClick={handleDispatch}>Dispatch via CCIP</button>
+            <button type="button" className="rounded-xl border border-white/15 px-4 py-3 text-base font-semibold text-white transition hover:border-cyan-400 disabled:opacity-40" disabled={recipients.length === 0} onClick={handleSimulate}>Simulate CCIP dispersal</button>
+            {sendState.status === "pending" && <p className="text-sm text-slate-300">Dispatching CCIP payload...</p>}
+            {sendState.status === "success" && (
+              <p className="text-sm text-emerald-300">Message {sendState.messageId?.slice(0, 10)} scheduled · {sendState.lane} · ETA {sendState.eta ? new Date(sendState.eta).toLocaleTimeString() : "Pending"}</p>
+            )}
+            {sendState.status === "error" && <p className="text-sm text-rose-300">{sendState.error}</p>}
             <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-xs text-slate-300">
               {logs.length === 0 ? <p>No CCIP batches prepared yet.</p> : (
                 <ol className="space-y-2">
@@ -399,4 +453,12 @@ interface ChainSummary {
   readonly transfers: number;
   readonly totalUsd: number;
   readonly assets: Array<{ symbol: AssetSymbol; totalAmount: number; usdEquivalent: number }>;
+}
+
+interface DispatchState {
+  readonly status: "idle" | "pending" | "success" | "error";
+  readonly messageId?: string;
+  readonly lane?: string;
+  readonly eta?: string;
+  readonly error?: string;
 }

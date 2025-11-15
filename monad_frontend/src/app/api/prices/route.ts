@@ -1,7 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { assetCatalog, AssetSymbol, AssetConfig } from "@/config/assets";
+import { assetCatalog, AssetSymbol } from "@/config/assets";
+import { feedMap } from "@/config/feeds";
+import { getPublicClient } from "@/lib/viem";
 
-const FEED_BASE_URL = "https://cl-marketplace-api.chain.link/api/price_feeds";
+const aggregatorAbi = [
+  {
+    name: "latestRoundData",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "roundId", type: "uint80" },
+      { name: "answer", type: "int256" },
+      { name: "startedAt", type: "uint256" },
+      { name: "updatedAt", type: "uint256" },
+      { name: "answeredInRound", type: "uint80" },
+    ],
+  },
+] as const;
 
 interface PricePayload {
   readonly symbol: AssetSymbol;
@@ -19,80 +35,44 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (validSymbols.length === 0) {
     return NextResponse.json({ message: "No supported assets requested" }, { status: 400 });
   }
-  const payloads = await Promise.all(validSymbols.map(async (symbol) => resolvePrice(symbol)));
+  const payloads = await Promise.all(validSymbols.map(async (symbol) => readOnchainPrice(symbol)));
   return NextResponse.json({ prices: payloads, timestamp: new Date().toISOString() });
 }
 
-async function resolvePrice(symbol: AssetSymbol): Promise<PricePayload> {
-  const asset = assetCatalog.find((entry) => entry.symbol === symbol) as AssetConfig;
-  const requestUrl = `${FEED_BASE_URL}/${asset.feedSlug}/latest_round_data`;
-  try {
-    const response = await fetch(requestUrl, { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error(`Feed responded with status ${response.status}`);
-    }
-    const json = await response.json();
-    const price = normalizePrice(json, asset);
-    const updatedAt = selectUpdatedAt(json);
-    return { symbol, price, updatedAt, source: "chainlink-marketplace", isFallback: false };
-  } catch (error) {
+async function readOnchainPrice(symbol: AssetSymbol): Promise<PricePayload> {
+  const feedConfig = feedMap[symbol];
+  if (!feedConfig) {
     return {
       symbol,
-      price: asset.fallbackPrice,
+      price: 0,
       updatedAt: new Date().toISOString(),
-      source: "fallback",
+      source: "missing-feed",
       isFallback: true,
     };
   }
-}
-
-function normalizePrice(payload: unknown, asset: AssetConfig): number {
-  const raw = readAnswer(payload);
-  if (raw === null) {
-    return asset.fallbackPrice;
+  try {
+    const client = getPublicClient("monad-feed", { url: feedConfig.rpcUrl });
+    const [, answerRaw, , updatedAtRaw] = await client.readContract({
+      address: feedConfig.address,
+      abi: aggregatorAbi,
+      functionName: "latestRoundData",
+    });
+    const answer = Number(answerRaw) / 10 ** feedConfig.decimals;
+    const updatedAt = new Date(Number(updatedAtRaw) * 1000).toISOString();
+    return {
+      symbol,
+      price: answer,
+      updatedAt,
+      source: feedConfig.address,
+      isFallback: false,
+    };
+  } catch (error) {
+    return {
+      symbol,
+      price: 0,
+      updatedAt: new Date().toISOString(),
+      source: "feed-error",
+      isFallback: true,
+    };
   }
-  return raw / 10 ** asset.feedDecimals;
-}
-
-function readAnswer(payload: unknown): number | null {
-  if (payload && typeof payload === "object") {
-    if ("answer" in payload) {
-      const value = Number((payload as { answer: unknown }).answer);
-      if (Number.isFinite(value)) {
-        return value;
-      }
-    }
-    if ("data" in payload && payload.data && typeof payload.data === "object") {
-      const nested = (payload as { data: { answer?: unknown } }).data.answer;
-      const nestedValue = Number(nested);
-      if (Number.isFinite(nestedValue)) {
-        return nestedValue;
-      }
-    }
-  }
-  return null;
-}
-
-function selectUpdatedAt(payload: unknown): string {
-  if (payload && typeof payload === "object") {
-    if ("updatedAt" in payload) {
-      const raw = (payload as { updatedAt?: number | string }).updatedAt;
-      if (typeof raw === "string") {
-        return raw;
-      }
-      if (typeof raw === "number") {
-        return new Date(raw * 1000).toISOString();
-      }
-    }
-    if ("data" in payload && payload.data && typeof payload.data === "object") {
-      const nested = (payload as { data: { updatedAt?: number | string } }).data.updatedAt;
-      if (typeof nested === "string") {
-        return nested;
-      }
-      if (typeof nested === "number") {
-        return new Date(nested * 1000).toISOString();
-      }
-    }
-  }
-  return new Date().toISOString();
 }

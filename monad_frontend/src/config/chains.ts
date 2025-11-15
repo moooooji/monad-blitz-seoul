@@ -4,29 +4,55 @@ export interface ChainConfig {
   readonly router: string;
   readonly nativeSymbol: string;
   readonly explorerUrl: string;
+  readonly receiver: string;
+  readonly rpcUrl: string;
 }
 
 export const chainCatalog: readonly ChainConfig[] = [
   {
-    selector: "16015286601757825753",
-    name: "Ethereum Mainnet",
-    router: "0x2a2a306d964e1DCf90A0Fc3De178C1e92C6A1811",
+    selector: "arbitrum-sepolia",
+    name: "Arbitrum Sepolia",
+    router: "0x2a9C5afB0d0e4BAb2BCdaE109EC4b0c4Be15a165",
     nativeSymbol: "ETH",
-    explorerUrl: "https://etherscan.io",
+    explorerUrl: "https://sepolia.arbiscan.io",
+    receiver: "0x0000000000000000000000000000000000000001",
+    rpcUrl: "https://arbitrum-sepolia.drpc.org",
   },
   {
-    selector: "15971525489660198786",
-    name: "Base",
-    router: "0x36B1036cd44C9deE689DBF1C2CBF522C4391376C",
-    nativeSymbol: "ETH",
-    explorerUrl: "https://basescan.org",
+    selector: "avalanche-fuji",
+    name: "Avalanche Fuji",
+    router: "0xF694E193200268f9a4868e4Aa017A0118C9a8177",
+    nativeSymbol: "AVAX",
+    explorerUrl: "https://testnet.snowtrace.io",
+    receiver: "0x0000000000000000000000000000000000000002",
+    rpcUrl: "https://api.avax-test.network/ext/bc/C/rpc",
   },
   {
-    selector: "12532609583862916517",
-    name: "Polygon",
-    router: "0x1C50bCe1B7B4e68B7b6af694fb914c7C44A9B026",
-    nativeSymbol: "MATIC",
-    explorerUrl: "https://polygonscan.com",
+    selector: "base-sepolia",
+    name: "Base Sepolia",
+    router: "0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93",
+    nativeSymbol: "ETH",
+    explorerUrl: "https://sepolia.basescan.org",
+    receiver: "0x0000000000000000000000000000000000000003",
+    rpcUrl: "https://sepolia.base.org",
+  },
+  {
+    selector: "ethereum-sepolia",
+    name: "Ethereum Sepolia",
+    router: "0x0BF3dE8c5D3e8A2B34D2BEeB17ABfCeBaf363A59",
+    nativeSymbol: "ETH",
+    explorerUrl: "https://sepolia.etherscan.io",
+    receiver: "0x0000000000000000000000000000000000000005",
+    rpcUrl: "https://api.zan.top/eth-sepolia",
+  },
+  {
+    selector: "op-sepolia",
+    name: "OP Sepolia",
+    router: "0x114A20A10b43D4115e5aeef7345a1A71d2a60C57",
+    nativeSymbol: "ETH",
+    explorerUrl: "https://sepolia-optimism.etherscan.io",
+    receiver: "0x0000000000000000000000000000000000000007",
+    rpcUrl: "https://sepolia.optimism.io",
   },
 ] as const;
 

@@ -1,4 +1,4 @@
-export type AssetSymbol = "ETH" | "USDC" | "LINK";
+export type AssetSymbol = "BTC" | "ETH" | "USDC" | "LINK" | "USDT";
 
 export interface AssetConfig {
   readonly symbol: AssetSymbol;
@@ -11,6 +11,15 @@ export interface AssetConfig {
 }
 
 export const assetCatalog: readonly AssetConfig[] = [
+  {
+    symbol: "BTC",
+    label: "Bitcoin",
+    feedSlug: "bitcoin-usd",
+    feedDecimals: 8,
+    tokenDecimals: 8,
+    fallbackPrice: 60000,
+    accent: "from-amber-700/80 via-orange-500/70 to-yellow-400/60",
+  },
   {
     symbol: "ETH",
     label: "Ether",
@@ -37,6 +46,15 @@ export const assetCatalog: readonly AssetConfig[] = [
     tokenDecimals: 18,
     fallbackPrice: 17,
     accent: "from-indigo-500/80 via-blue-600/70 to-slate-500/60",
+  },
+  {
+    symbol: "USDT",
+    label: "Tether",
+    feedSlug: "tether-usd",
+    feedDecimals: 8,
+    tokenDecimals: 6,
+    fallbackPrice: 1,
+    accent: "from-lime-500/80 via-emerald-500/70 to-green-400/60",
   },
 ] as const;
 

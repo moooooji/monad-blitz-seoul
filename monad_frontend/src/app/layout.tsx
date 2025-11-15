@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ReactNode } from "react";
+import { Web3Provider } from "@/providers/wagmi-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,7 +27,7 @@ interface RootLayoutProps {
 const RootLayout = ({ children }: RootLayoutProps) => (
   <html lang="en">
     <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-      {children}
+      <Web3Provider>{children}</Web3Provider>
     </body>
   </html>
 );
