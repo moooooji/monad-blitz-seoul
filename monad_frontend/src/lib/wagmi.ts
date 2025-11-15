@@ -1,12 +1,6 @@
 import { createConfig, http } from "wagmi";
-import {
-  arbitrumSepolia,
-  avalancheFuji,
-  baseSepolia,
-  optimismSepolia,
-  sepolia,
-} from "wagmi/chains";
-import { injected } from "wagmi/connectors";
+import { arbitrumSepolia, avalancheFuji, baseSepolia, optimismSepolia, sepolia } from "wagmi/chains";
+import { coinbaseWallet, injected, metaMask } from "wagmi/connectors";
 
 const transports = {
   [arbitrumSepolia.id]: http("https://arbitrum-sepolia.drpc.org"),
@@ -19,8 +13,16 @@ const transports = {
 export const wagmiConfig = createConfig({
   chains: [sepolia, arbitrumSepolia, avalancheFuji, baseSepolia, optimismSepolia],
   connectors: [
+    metaMask({
+      dappMetadata: { name: "Monad CCIP Grants", description: "Grant dispersal cockpit" },
+      shimDisconnect: true,
+    }),
+    coinbaseWallet({
+      appName: "Monad CCIP Grants",
+    }),
     injected({
       shimDisconnect: true,
+      // Covers Rabby, Phantom (EVM) and other injected wallets.
     }),
   ],
   transports,

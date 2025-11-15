@@ -26,11 +26,11 @@ const GrantForm = ({ className = "" }: GrantFormProps) => {
   const [amountQuery, setAmountQuery] = useQueryNumber("amount", 10000);
   const [usdInput, setUsdInput] = useState<string>(String(amountQuery));
   const [splits, setSplits] = useState<Record<AssetSymbol, number>>({
-    BTC: 25,
-    ETH: 25,
-    USDC: 20,
-    LINK: 15,
-    USDT: 15,
+    USDC: 100,
+    USDT: 0,
+    ETH: 0,
+    BTC: 0,
+    LINK: 0,
   });
   const [recipients, setRecipients] = useState<GrantRecipient[]>([]);
   const [draft, setDraft] = useState<RecipientDraft>(() => ({ address: "", chainSelector: chainCatalog[0].selector, assetSymbol: assetCatalog[0].symbol, usdShare: "" }));

@@ -12,13 +12,22 @@ export interface AssetConfig {
 
 export const assetCatalog: readonly AssetConfig[] = [
   {
-    symbol: "BTC",
-    label: "Bitcoin",
-    feedSlug: "bitcoin-usd",
+    symbol: "USDC",
+    label: "USD Coin",
+    feedSlug: "ethereum-mainnet/usdc-usd",
     feedDecimals: 8,
-    tokenDecimals: 8,
-    fallbackPrice: 60000,
-    accent: "from-amber-700/80 via-orange-500/70 to-yellow-400/60",
+    tokenDecimals: 6,
+    fallbackPrice: 1,
+    accent: "from-sky-500/80 via-cyan-500/70 to-blue-400/60",
+  },
+  {
+    symbol: "USDT",
+    label: "Tether",
+    feedSlug: "tether-usd",
+    feedDecimals: 8,
+    tokenDecimals: 6,
+    fallbackPrice: 1,
+    accent: "from-lime-500/80 via-emerald-500/70 to-green-400/60",
   },
   {
     symbol: "ETH",
@@ -30,13 +39,13 @@ export const assetCatalog: readonly AssetConfig[] = [
     accent: "from-orange-500/80 via-amber-500/70 to-amber-300/60",
   },
   {
-    symbol: "USDC",
-    label: "USD Coin",
-    feedSlug: "ethereum-mainnet/usdc-usd",
+    symbol: "BTC",
+    label: "Bitcoin",
+    feedSlug: "bitcoin-usd",
     feedDecimals: 8,
-    tokenDecimals: 6,
-    fallbackPrice: 1,
-    accent: "from-sky-500/80 via-cyan-500/70 to-blue-400/60",
+    tokenDecimals: 8,
+    fallbackPrice: 60000,
+    accent: "from-amber-700/80 via-orange-500/70 to-yellow-400/60",
   },
   {
     symbol: "LINK",
@@ -46,15 +55,6 @@ export const assetCatalog: readonly AssetConfig[] = [
     tokenDecimals: 18,
     fallbackPrice: 17,
     accent: "from-indigo-500/80 via-blue-600/70 to-slate-500/60",
-  },
-  {
-    symbol: "USDT",
-    label: "Tether",
-    feedSlug: "tether-usd",
-    feedDecimals: 8,
-    tokenDecimals: 6,
-    fallbackPrice: 1,
-    accent: "from-lime-500/80 via-emerald-500/70 to-green-400/60",
   },
 ] as const;
 
