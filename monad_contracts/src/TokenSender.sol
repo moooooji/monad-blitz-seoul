@@ -135,53 +135,23 @@ contract TokenSender {
         emit ChainAllowlisted(_chainSelector, allowed);
     }
 
-    /// @notice ERC-20 토큰을 Base Sepolia로 전송
-    /// @param _token 전송할 토큰 주소 (amount가 0이면 address(0) 가능)
+    /// @notice 메시지만 전송 (토큰 전송 없음)
     /// @param _receiver 목적지 Receiver 컨트랙트 주소
-    /// @param _amount 전송할 토큰 수량 (0이면 메시지만 전송)
     /// @return messageId CCIP 메시지 ID
-    /// @dev 이 컨트랙트가 토큰을 충분히 보유하고 있어야 합니다 (amount > 0인 경우)
-    /// @dev feeToken이 native인 경우 msg.value로 수수료를 지불해야 합니다
-    /// @dev CCIP Router가 자동으로 Token Pool을 통해 lockOrBurn을 처리합니다
-    function transferTokens(
+    function transferMessage(
+        address _receiver
+    ) external payable onlyAllowlistedChain(destinationChainSelector) returns (bytes32 messageId) {
+        if (_receiver == address(0)) revert InvalidAmount();
+        Client.EVM2AnyMessage memory message = _buildCCIPMessage(_receiver, address(0), 0);
+        messageId = _dispatchMessage(message, _receiver, address(0), 0);
+    }
+
+    function transferTokens1(
         address _token,
         address _receiver,
         uint256 _amount
-    ) external payable onlyAllowlistedChain(destinationChainSelector) returns (bytes32 messageId) {
-        if (_receiver == address(0)) revert InvalidAmount();
-        
-        // amount가 0이면 메시지만 전송 (토큰 전송 없음)
-        if (_amount == 0) {
-            // 메시지만 전송하는 경우
-            Client.EVM2AnyMessage memory message = _buildCCIPMessage(_receiver, address(0), 0);
-            IRouterClient router = IRouterClient(ccipRouter);
-            uint256 fee = router.getFee(destinationChainSelector, message);
-            
-            if (feeToken == address(0)) {
-                if (msg.value < fee) {
-                    revert InsufficientBalance(fee, msg.value);
-                }
-                messageId = router.ccipSend{value: fee}(destinationChainSelector, message);
-            } else {
-                uint256 feeTokenBalance = IERC20(feeToken).balanceOf(address(this));
-                if (feeTokenBalance < fee) {
-                    revert InsufficientBalance(fee, feeTokenBalance);
-                }
-                uint256 feeTokenAllowance = IERC20(feeToken).allowance(address(this), ccipRouter);
-                if (feeTokenAllowance < fee) {
-                    bool success = IERC20(feeToken).approve(ccipRouter, type(uint256).max);
-                    if (!success) revert TransferFailed();
-                }
-                messageId = router.ccipSend(destinationChainSelector, message);
-            }
-            
-            if (messageId == bytes32(0)) revert CCIPSendFailed();
-            emit TokensTransferred(messageId, destinationChainSelector, _receiver, address(0), 0);
-            return messageId;
-        }
-        
-        // amount > 0인 경우 기존 로직
-        if (_token == address(0)) revert InvalidAmount();
+    ) external  onlyAllowlistedChain(destinationChainSelector)  {
+        if (_receiver == address(0) || _token == address(0) || _amount == 0) revert InvalidAmount();
 
         // 컨트랙트의 토큰 잔액 확인
         uint256 balance = IERC20(_token).balanceOf(address(this));
@@ -196,39 +166,19 @@ contract TokenSender {
             if (!success) revert TransferFailed();
         }
 
+       
+    }
+    function transferTokens2(
+        address _token,
+        address _receiver,
+        uint256 _amount
+    ) external payable onlyAllowlistedChain(destinationChainSelector) returns (bytes32 messageId) {
+        
+
         // CCIP 메시지 구성
         Client.EVM2AnyMessage memory message = _buildCCIPMessage(_receiver, _token, _amount);
 
-        // 수수료 확인 및 처리
-        IRouterClient router = IRouterClient(ccipRouter);
-        uint256 fee = router.getFee(destinationChainSelector, message);
-
-        if (feeToken == address(0)) {
-            // Native token으로 수수료 지불
-            if (msg.value < fee) {
-                revert InsufficientBalance(fee, msg.value);
-            }
-            messageId = router.ccipSend{value: fee}(destinationChainSelector, message);
-        } else {
-            // ERC20 토큰으로 수수료 지불 (LINK, WMON 등)
-            uint256 feeTokenBalance = IERC20(feeToken).balanceOf(address(this));
-            if (feeTokenBalance < fee) {
-                revert InsufficientBalance(fee, feeTokenBalance);
-            }
-
-            // CCIP Router에 feeToken approve
-            uint256 feeTokenAllowance = IERC20(feeToken).allowance(address(this), ccipRouter);
-            if (feeTokenAllowance < fee) {
-                bool success = IERC20(feeToken).approve(ccipRouter, type(uint256).max);
-                if (!success) revert TransferFailed();
-            }
-
-            messageId = router.ccipSend(destinationChainSelector, message);
-        }
-
-        if (messageId == bytes32(0)) revert CCIPSendFailed();
-
-        emit TokensTransferred(messageId, destinationChainSelector, _receiver, _token, _amount);
+        messageId = _dispatchMessage(message, _receiver, _token, _amount);
     }
 
     /// @notice CCIP 전송 수수료 조회
@@ -271,6 +221,40 @@ contract TokenSender {
             feeToken: feeToken,
             extraArgs: extraArgs
         });
+    }
+
+    function _dispatchMessage(
+        Client.EVM2AnyMessage memory message,
+        address _receiver,
+        address _token,
+        uint256 _amount
+    ) internal returns (bytes32 messageId) {
+        IRouterClient router = IRouterClient(ccipRouter);
+        uint256 fee = router.getFee(destinationChainSelector, message);
+
+        if (feeToken == address(0)) {
+            if (msg.value < fee) {
+                revert InsufficientBalance(fee, msg.value);
+            }
+            messageId = router.ccipSend{value: fee}(destinationChainSelector, message);
+        } else {
+            uint256 feeTokenBalance = IERC20(feeToken).balanceOf(address(this));
+            if (feeTokenBalance < fee) {
+                revert InsufficientBalance(fee, feeTokenBalance);
+            }
+
+            uint256 feeTokenAllowance = IERC20(feeToken).allowance(address(this), ccipRouter);
+            if (feeTokenAllowance < fee) {
+                bool success = IERC20(feeToken).approve(ccipRouter, type(uint256).max);
+                if (!success) revert TransferFailed();
+            }
+
+            messageId = router.ccipSend(destinationChainSelector, message);
+        }
+
+        if (messageId == bytes32(0)) revert CCIPSendFailed();
+
+        emit TokensTransferred(messageId, destinationChainSelector, _receiver, _token, _amount);
     }
 
     /// @notice 컨트랙트의 토큰 잔액 조회
@@ -321,4 +305,3 @@ contract TokenSender {
     /// @notice 컨트랙트가 native token을 받을 수 있도록
     receive() external payable {}
 }
-

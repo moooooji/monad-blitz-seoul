@@ -23,19 +23,31 @@ contract TestTokenSender is Script {
         address deployer = vm.addr(deployerPrivateKey);
 
         // 주소 설정
-        address payable tokenSenderAddress = payable(0xAFA487451B7ccc1fF410f98dc886e5e1C2696118);
+        address payable tokenSenderAddress = payable(0x14dD52a43dc3f6F9004d73602FeF6B23D401323C);
         // USDC 주소 (새로운 주소)
         address tokenAddress = 0x4e7C363fb15768129b2B0C824E8a6597C6B90fC1;
         address receiverAddress = 0xE5BFB7751472CF54f50ceB1D2AD4a4Ab5C95Da8c;
         
         // 테스트: 토큰 수량 0으로 설정 (메시지만 전송, burn 에러 방지)
-        uint256 amount = 0;
+        uint256 amount = 112;
+        uint256 nativeFeeBuffer = 1000000000000000;
+        uint256 chunkSize = vm.envOr("TRANSFER_CHUNK", amount);
+        if (amount == 0) {
+            chunkSize = 0;
+        } else if (chunkSize == 0 || chunkSize > amount) {
+            chunkSize = amount;
+        }
 
         console.log("=== Testing TokenSender ===");
         console.log("TokenSender address:", tokenSenderAddress);
         console.log("Token address (USDC):", tokenAddress);
         console.log("Receiver address:", receiverAddress);
         console.log("Amount: 10 USDC (", amount, ")");
+        if (amount > 0) {
+            console.log("Chunk size:", chunkSize, "(env TRANSFER_CHUNK)");
+        } else {
+            console.log("Message-only mode (amount = 0)");
+        }
         console.log("Deployer address:", deployer);
 
         TokenSender sender = TokenSender(tokenSenderAddress);
@@ -68,7 +80,7 @@ contract TestTokenSender is Script {
                 console.log("Approved", amount, "USDC");
 
                 // Deposit
-                sender.depositToken(tokenAddress, amount);
+                // sender.depositToken(tokenAddress, amount);
                 console.log("Deposited", amount, "USDC to TokenSender");
                 console.log("New TokenSender balance:", sender.getTokenBalance(tokenAddress));
             } else {
@@ -104,8 +116,9 @@ contract TestTokenSender is Script {
 
         // 4. 수수료 확인
         console.log("\n--- Step 4: Check CCIP Fee ---");
-        try sender.getTransferFee(tokenAddress, receiverAddress, amount) returns (uint256 estimatedFee) {
-            console.log("Estimated CCIP fee:", estimatedFee);
+        uint256 previewAmount = amount == 0 ? 0 : chunkSize;
+        try sender.getTransferFee(tokenAddress, receiverAddress, previewAmount) returns (uint256 estimatedFee) {
+            console.log("Estimated CCIP fee per chunk(", previewAmount, "):", estimatedFee);
             if (sender.feeToken() == address(0)) {
                 console.log("Fee in native token (MONAD)");
             } else {
@@ -117,23 +130,61 @@ contract TestTokenSender is Script {
 
         // 5. 토큰 전송
         console.log("\n--- Step 5: Send Tokens via CCIP ---");
-        console.log("Sending", amount, "USDC to receiver...");
+        uint256 totalChunks = amount == 0 ? 1 : (amount + chunkSize - 1) / chunkSize;
+        uint256 remaining = amount;
+        for (uint256 chunkIndex = 0; chunkIndex < totalChunks; chunkIndex++) {
+            uint256 sendAmount = amount == 0
+                ? 0
+                : remaining > chunkSize
+                    ? chunkSize
+                    : remaining;
+            // console.log("Sending chunk", chunkIndex + 1, "/", totalChunks, "amount:", sendAmount);
 
-        // feeToken이 native인 경우만 value 필요
-        uint256 valueToSend = sender.feeToken() == address(0) ? 1000000000000000 : 0;
-        
-        try sender.transferTokens{value: valueToSend}(
-            tokenAddress,
-            receiverAddress,
-            amount
-        ) returns (bytes32 messageId) {
-            console.log("\n[SUCCESS] Tokens sent!");
-            console.log("Message ID:", vm.toString(messageId));
-            console.log("\nCheck Ethereum Sepolia for the transaction");
-        } catch Error(string memory reason) {
-            console.log("\n[ERROR] Transaction failed:", reason);
-        } catch (bytes memory) {
-            console.log("\n[ERROR] Low-level error occurred");
+            uint256 chunkFee = 0;
+            try sender.getTransferFee(tokenAddress, receiverAddress, sendAmount) returns (uint256 estimatedChunkFee) {
+                chunkFee = estimatedChunkFee;
+                console.log("Estimated fee for chunk:", estimatedChunkFee);
+            } catch {
+                console.log("Could not estimate fee for chunk, sending without preview");
+            }
+
+            uint256 valueToSend = 0;
+            if (sender.feeToken() == address(0)) {
+                valueToSend = chunkFee > 0 ? chunkFee + nativeFeeBuffer : nativeFeeBuffer;
+            }
+
+            if (sendAmount == 0) {
+                try sender.transferMessage{value: valueToSend}(receiverAddress) returns (bytes32 messageId) {
+                    console.log("\n[SUCCESS] Message chunk sent!");
+                    console.log("Message ID:", vm.toString(messageId));
+                } catch Error(string memory reason) {
+                    console.log("\n[ERROR] Message chunk failed:", reason);
+                } catch (bytes memory) {
+                    console.log("\n[ERROR] Low-level error occurred while sending message chunk");
+                }
+            } else {
+                try sender.transferTokens1(
+                    tokenAddress,
+                    receiverAddress,
+                    sendAmount
+                )  {
+                    console.log("\n[SUCCESS] Chunk sent!");
+                    console.log("Message ID:");
+                } catch Error(string memory reason) {
+                    console.log("\n[ERROR] Chunk failed:", reason);
+                } catch (bytes memory) {
+                    console.log("\n[ERROR] Low-level error occurred while sending chunk");
+                }
+                sender.transferTokens2{value: valueToSend}(
+                    tokenAddress,
+                    receiverAddress,
+                    sendAmount
+                );
+            }
+
+            if (amount > 0 && remaining >= sendAmount) {
+                remaining -= sendAmount;
+            }
         }
 
         vm.stopBroadcast();
@@ -141,4 +192,3 @@ contract TestTokenSender is Script {
         console.log("\n=== Test Complete ===");
     }
 }
-

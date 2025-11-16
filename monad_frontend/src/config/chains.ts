@@ -6,6 +6,7 @@ export interface ChainConfig {
   readonly explorerUrl: string;
   readonly receiver: string;
   readonly rpcUrl: string;
+  readonly rpcEnv?: string;
 }
 
 export const chainCatalog: readonly ChainConfig[] = [
